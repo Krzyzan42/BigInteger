@@ -1,0 +1,3 @@
+/home/krzyzan/studia/sem_3/tep/lista_2/build/CMakeFiles/big_integer.dir
+/home/krzyzan/studia/sem_3/tep/lista_2/build/CMakeFiles/edit_cache.dir
+/home/krzyzan/studia/sem_3/tep/lista_2/build/CMakeFiles/rebuild_cache.dir
