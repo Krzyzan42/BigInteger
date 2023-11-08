@@ -2,34 +2,7 @@
 #include <math.h>
 #include <string.h>
 
-BigInteger::SignedArray::SignedArray(Array *result, bool negative)
-    : m_array(result),
-      m_negative(negative) {}
-
-const BigInteger::SignedArray BigInteger::SignedArray::fromCNumber(const BigInteger &number, bool flip_neg)
-{
-    bool neg = number.m_negative;
-    if (flip_neg)
-        neg = !number.m_negative;
-    return SignedArray(number.m_table, neg);
-}
-
-Array *BigInteger::SignedArray::getArray()
-{
-    return m_array;
-}
-
-const Array *BigInteger::SignedArray::getArray() const
-{
-    return m_array;
-}
-
-bool BigInteger::SignedArray::isNegative() const
-{
-    return m_negative;
-}
-
-void BigInteger::collectDigits(int x, int digits_left, Array &target) const
+void BigInteger::intToDigitArray(int x, int digits_left, Array &target) const
 {
     if (digits_left == 0)
         return;
@@ -38,7 +11,7 @@ void BigInteger::collectDigits(int x, int digits_left, Array &target) const
     target[target.length() - digits_left] = digit;
 
     int reduced = floor(1.0 * x / 10);
-    collectDigits(reduced, digits_left - 1, target);
+    intToDigitArray(reduced, digits_left - 1, target);
 }
 
 void BigInteger::borrow(Array &number, int digit_index) const
@@ -58,9 +31,7 @@ void BigInteger::mulByDigit(const Array &a, int digit, Array &result) const
 
     for (int i = 0; i < result.length(); i++)
     {
-        int a_val = 0;
-        if (a_len > i)
-            a_val = a[i];
+        int a_val = a.length() > i ? a[i] : 0;
 
         int mul_result = digit * a_val + carry;
         carry = floor(1.f * mul_result / 10.f);
@@ -68,13 +39,15 @@ void BigInteger::mulByDigit(const Array &a, int digit, Array &result) const
     }
 }
 
+// returns divident/divisor capped by 9
+// Just keeps multiplying divisor until its bigger than divident
 int BigInteger::howManyFit(const Array &divident, const Array &divisor) const
 {
     Array result(divisor.length() + 1);
     for (int i = 1; i < 10; i++)
     {
         mulByDigit(divisor, i, result);
-        int c_res = compare(divident, result);
+        int c_res = compareUnsigned(divident, result);
         if (c_res == 1)
             return i - 1;
         else if (c_res == 0)
@@ -90,15 +63,12 @@ void BigInteger::shiftRight(Array &a) const
     a[0] = 0;
 }
 
-int BigInteger::compare(const Array &a, const Array &b) const
+int BigInteger::compareUnsigned(const Array &a, const Array &b) const
 {
     for (int i = std::max(a.length(), b.length()) - 1; i >= 0; i--)
     {
-        int a_val = 0, b_val = 0;
-        if (a.length() > i)
-            a_val = a[i];
-        if (b.length() > i)
-            b_val = b[i];
+        int a_val = a.length() > i ? a[i] : 0;
+        int b_val = b.length() > i ? b[i] : 0;
 
         if (a_val > b_val)
             return -1;
@@ -108,18 +78,15 @@ int BigInteger::compare(const Array &a, const Array &b) const
     return 0;
 }
 
-void BigInteger::add(const Array &a, const Array &b, Array &c, int b_offset) const
+// Algorthm for addition by hand
+void BigInteger::addUnsigned(const Array &a, const Array &b, Array &c, int b_offset) const
 {
-    const int a_len = a.length();
-    const int b_len = b.length();
-
     int carry = 0;
     for (int i = 0; i < c.length(); i++)
     {
-        int a_val = 0, b_val = 0;
-        if (a_len > i)
-            a_val = a[i];
-        if (0 <= i - b_offset && i - b_offset < b_len)
+        int a_val = a.length() > i ? a[i] : 0; 
+        int b_val = 0;
+        if (0 <= i - b_offset && i - b_offset < b.length())
             b_val = b[i - b_offset];
 
         int sum = a_val + b_val + carry;
@@ -136,52 +103,51 @@ void BigInteger::add(const Array &a, const Array &b, Array &c, int b_offset) con
     }
 }
 
-void BigInteger::sub(const Array &a, const Array &b, Array &result) const
+// Algorithm for subtraction by hand
+// Puts result in c
+void BigInteger::subUnsigned(const Array &a, const Array &b, Array &c) const
 {
-    const int a_len = a.length();
-    const int b_len = b.length();
-    int c_len = std::max(a_len, b_len);
-    result.fill(0);
+    int c_len = std::max(a.length(), b.length());
+    c.fill(0);
 
-    for (int i = 0; i < a_len; i++)
-        result[i] = a[i];
+    for (int i = 0; i < a.length(); i++)
+        c[i] = a[i];
 
     for (int i = 0; i < c_len; i++)
     {
-        int c_val = 0, b_val = 0;
-        c_val = result[i];
-        if (b_len > i)
-            b_val = b[i];
+        int b_val = b.length() > i ? b[i] : 0;
+        int c_val = c[i];
 
         if (c_val < b_val)
         {
-            borrow(result, i);
-            c_val = result[i];
+            borrow(c, i);
+            c_val = c[i];
         }
 
-        result[i] = c_val - b_val;
+        c[i] = c_val - b_val;
     }
 }
 
-Array* BigInteger::mul(const Array &a, const Array &b) const
+// Algorithm for multiplication by hand
+Array* BigInteger::mulUnsigned(const Array &a, const Array &b) const
 {
-    const int result_len = a.length() + b.length();
-    const int component_len = a.length() + 1;
-    const int n_components = b.length();
-    Array *result_components = new Array[n_components];
-    for (int i = 0; i < n_components; i++)
-        result_components[i] = Array(component_len);
+    // Prepare algorithm
+    Array *components = new Array[b.length()];
+    for (int i = 0; i < b.length(); i++)
+        components[i] = Array(a.length() + 1);
 
-    for (int i = 0; i < n_components; i++)
-        mulByDigit(a, b[i], result_components[i]);
+    // Calculate all components
+    for (int i = 0; i < b.length(); i++)
+        mulByDigit(a, b[i], components[i]);
 
-    Array *read_buffer = new Array(result_len);
-    Array *write_buffer = new Array(result_len);
+    // Add all of the components
+    Array *read_buffer = new Array(a.length() + b.length());
+    Array *write_buffer = new Array(a.length() + b.length());
     read_buffer->fill(0);
     write_buffer->fill(0);
-    for (size_t i = 0; i < n_components; i++)
+    for (size_t i = 0; i < b.length(); i++)
     {
-        add(*read_buffer, result_components[i], *write_buffer, i);
+        addUnsigned(*read_buffer, components[i], *write_buffer, i);
 
         Array *t = read_buffer;
         read_buffer = write_buffer;
@@ -189,12 +155,13 @@ Array* BigInteger::mul(const Array &a, const Array &b) const
     }
     
     delete write_buffer;
-    delete[] result_components;
+    delete[] components;
 
     return read_buffer;
 }
 
-BigInteger::ArrayDivResult BigInteger::div(const Array &a, const Array &b) const
+// Algorithm for subtraction by hand
+Array* BigInteger::divUnsigned(const Array &a, const Array &b) const
 {
     Array *result_p = new Array(a.length());
     Array *minuend_p = new Array(a.length());
@@ -211,56 +178,58 @@ BigInteger::ArrayDivResult BigInteger::div(const Array &a, const Array &b) const
         (*result_p)[i] = multiplier;
         mulByDigit(b, multiplier, subtrahend);
         Array buffor = minuend;
-        sub(buffor, subtrahend, minuend);
+        subUnsigned(buffor, subtrahend, minuend);
     }
 
-    return ArrayDivResult(result_p, minuend_p);
+    delete minuend_p;
+    return result_p;
 }
 
-BigInteger::SignedArray BigInteger::addSigned(const SignedArray &s_array_1, const SignedArray &s_array_2) const
+std::pair<Array*, bool> BigInteger::addSigned(  const Array &a, bool a_neg, 
+                                                const Array &b, bool b_neg) const
 {
-    const Array *a = s_array_1.getArray();
-    const Array *b = s_array_2.getArray();
-    bool a_neg = s_array_1.isNegative();
-    bool b_neg = s_array_2.isNegative();
-    Array *c = new Array(std::max(a->length(), b->length()) + 1);
-
+    Array *result = new Array(std::max(a.length(), b.length()) + 1);
     bool negate = false;
 
     if (a_neg != b_neg)
     {
+        // Signs don't match -> do subtraction
+        const Array *left = &a, *right = &b;
         if (a_neg)
         {
-            const Array *temp = a; // Put negative number on the 'right' side
-            a = b;
-            b = temp;
+            const Array *temp = left; // Put negative number on the 'right' side
+            left = right;
+            right = temp;
         }
-        if (compare(*a, *b) > 0)
+        if (compareUnsigned(*left, *right) > 0)
         {
-            const Array *temp = a; // Put bigger absolute on the 'left' side
-            a = b;
-            b = temp;
+            // If negative number is bigger, put it on the left side
+            // do left-right and negate result
+            const Array *temp = left; 
+            left = right;
+            right = temp;
             negate = true;
         }
-        sub(*a, *b, *c);
+        subUnsigned(*left, *right, *result);
     }
     else
     {
+        // Signs match -> do addition
         if (a_neg)
             negate = true;
-        add(*a, *b, *c);
+        addUnsigned(a, b, *result);
     }
 
-    return SignedArray(c, negate);
+    return std::pair<Array*, bool>(result, negate);
 }
 
 int BigInteger::compare(const BigInteger &a, const BigInteger &b) const
 {
     if(a.m_negative == b.m_negative) {
         if(a.m_negative == false) 
-            return compare(*a.m_table, *b.m_table);
+            return compareUnsigned(*a.m_digits, *b.m_digits);
         else
-            return compare(*b.m_table, *a.m_table);
+            return compareUnsigned(*b.m_digits, *a.m_digits);
     } else {
         if(a.m_negative == true) 
             return 1;
@@ -271,13 +240,13 @@ int BigInteger::compare(const BigInteger &a, const BigInteger &b) const
 
 BigInteger::BigInteger(Array *table, bool negative)
 {
-    m_table = table;
+    m_digits = table;
     m_negative = negative;
 };
 
 BigInteger::BigInteger()
 {
-    m_table = new Array(0);
+    m_digits = new Array(0);
     m_negative = false;
 }
 
@@ -285,7 +254,7 @@ BigInteger::BigInteger(int number)
 {
     if (number == 0)
     {
-        m_table = new Array(0);
+        m_digits = new Array(0);
         m_negative = false;
         return;
     }
@@ -299,65 +268,60 @@ BigInteger::BigInteger(int number)
         m_negative = false;
     }
 
-    int len = ceil(log10(1.f * number + 1));
-    m_table = new Array(len);
-    collectDigits(number, len, *m_table);
+    int digit_count = ceil(log10(1.f * number + 1));
+    m_digits = new Array(digit_count);
+    intToDigitArray(number, digit_count, *m_digits);
 }
 
 BigInteger::BigInteger(const BigInteger &other)
 {
     m_negative = other.m_negative;
-    m_table = new Array(*other.m_table);
+    m_digits = new Array(*other.m_digits);
 }
 
 BigInteger BigInteger::operator-() const
 {
-    if (m_table->length() == 0)
+    if (m_digits->length() == 0)
         return BigInteger(0);
 
-    Array *copy = new Array(*m_table);
+    Array *copy = new Array(*m_digits);
     return BigInteger(copy, !m_negative);
 }
 
 BigInteger BigInteger::operator+(const BigInteger &other) const
 {
-    const SignedArray a = SignedArray::fromCNumber(*this);
-    const SignedArray b = SignedArray::fromCNumber(other);
-    SignedArray c = addSigned(a, b);
-    return BigInteger(c.getArray(), c.isNegative());
+    std::pair<Array*, bool> c = addSigned(
+        *this->m_digits, this->m_negative, 
+        *other.m_digits, other.m_negative
+    );
+    return BigInteger(c.first, c.second);
 }
 
 BigInteger BigInteger::operator-(const BigInteger &other) const
 {
-    const SignedArray a = SignedArray::fromCNumber(*this);
-    const SignedArray b = SignedArray::fromCNumber(other, true);
-    SignedArray c = addSigned(a, b);
-    return BigInteger(c.getArray(), c.isNegative());
+    std::pair<Array*, bool> c = addSigned(
+        *this->m_digits, this->m_negative, 
+        *other.m_digits, !other.m_negative
+    );
+    return BigInteger(c.first, c.second);
 }
 
 BigInteger BigInteger::operator*(const BigInteger &other) const
 {
-    Array *result = mul(*m_table, *other.m_table);
+    Array *result = mulUnsigned(*m_digits, *other.m_digits);
     return BigInteger(result, m_negative != other.m_negative);
 }
 
-DivResult BigInteger::operator/(const BigInteger &other) const
+BigInteger BigInteger::operator/(const BigInteger &other) const
 {
-    if (compare(*m_table, *other.m_table) == 1)
-        return DivResult(BigInteger(0), other);
-    if (compare(Array(0), *other.m_table) == 0)
-        return DivResult(BigInteger(0), BigInteger(0));
+    if (compareUnsigned(*m_digits, *other.m_digits) == 1)
+        return BigInteger(0);   // divisior is bigger than divident
+    if (compareUnsigned(Array(0), *other.m_digits) == 0)
+        return BigInteger(0);   // divisor is 0
 
-    ArrayDivResult res = div(*m_table, *other.m_table);
+    Array *res = divUnsigned(*m_digits, *other.m_digits);
     bool res_negative = m_negative != other.m_negative;
-    BigInteger a(res.divident, res_negative);
-    BigInteger b(res.remainder, res_negative);
-
-    return DivResult(a, b);
-}
-
-BigInteger BigInteger::operator%(const BigInteger &other) const {
-    return ((*this)/other).remainder;
+    return BigInteger(res, res_negative);
 }
 
 BigInteger BigInteger::operator++() const
@@ -404,12 +368,12 @@ std::string BigInteger::toString() const
 {
     std::string str = "";
 
-    int i = m_table->length() - 1;
-    while ((*m_table)[i] == 0) // Skip zeros
+    int i = m_digits->length() - 1;
+    while ((*m_digits)[i] == 0) // Skip zeros
         i--;
 
     for (; i >= 0; i--) // Write numbers to string
-        str += '0' + (*m_table)[i];
+        str += '0' + (*m_digits)[i];
 
     if (str == "") // replace emtpy string with 0
         str = "0";
@@ -419,6 +383,3 @@ std::string BigInteger::toString() const
 
     return str;
 }
-
-DivResult::DivResult(BigInteger result, BigInteger remainder) : result(result),
-                                                          remainder(remainder) {}

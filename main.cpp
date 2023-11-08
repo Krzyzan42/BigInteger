@@ -45,29 +45,12 @@ void mulTests()
 
 void divTests()
 {
-    DivResult res = BigInteger(5) / BigInteger(7);
-    assert(res.result.toString() == "0");
-    assert(res.remainder.toString() == "7");
-
-    res = BigInteger(25) / BigInteger(5);
-    assert(res.result.toString() == "5");
-    assert(res.remainder.toString() == "0");
-
-    res = BigInteger(31) / BigInteger(4);
-    assert(res.result.toString() == "7");
-    assert(res.remainder.toString() == "3");
-
-    res = BigInteger(325426) / BigInteger(28);
-    assert(res.result.toString() == "11622");
-    assert(res.remainder.toString() == "10");
-
-    res = BigInteger(5) / BigInteger(0);
-    assert(res.result.toString() == "0");
-    assert(res.remainder.toString() == "0");
-
-    res = BigInteger(-87) / BigInteger(2);
-    assert(res.result.toString() == "-43");
-    assert(res.remainder.toString() == "-1");
+    assert((BigInteger(5) / BigInteger(7)).toString() == "0");
+    assert((BigInteger(25) / BigInteger(5)).toString() == "5");
+    assert((BigInteger(31) / BigInteger(4)).toString() == "7");
+    assert((BigInteger(325426) / BigInteger(28)).toString() == "11622");
+    assert((BigInteger(5) / BigInteger(0)).toString() == "0");
+    assert((BigInteger(-87) / BigInteger(2)).toString() == "-43");
 }
 
 void compareTests() {
